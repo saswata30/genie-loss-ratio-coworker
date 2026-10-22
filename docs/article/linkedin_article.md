@@ -1,4 +1,4 @@
-# The Hailstorm Hit on Thursday. My AI Coworker Told Me Before Friday's Coffee.
+# The Databricks Genie Coworker That Briefs Me Before My Coffee
 
 *How an insurer can manage its loss ratio every day with Genie One*
 
