@@ -1,0 +1,18 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Helvetica","actorBkg":"#1B3139","actorTextColor":"#ffffff","actorBorder":"#1B3139","signalColor":"#1B3139","noteBkgColor":"#fff7e3"}}}%%
+sequenceDiagram
+  autonumber
+  participant J as Daily watch job (06:30)
+  participant G as Genie Agent
+  participant O as Genie One (07:30 task)
+  participant S as Slack / Teams
+  participant C as CUO (phone)
+  participant T as Claims · Reinsurance · UW
+  J->>J: Load overnight claims, refresh metric views
+  J->>J: Watchlist: DACH Property RED (hail), SE Liability RED (large loss), UK Motor RED (frequency)
+  J->>G: "Why did DACH Property rise this week?"
+  G-->>J: Frequency +513% vs 90-day base, cause Hail, cat share 78%
+  J->>S: Alert card + actions per team (#claims, #reinsurance, #uw-property)
+  O->>S: /loss-ratio-daily-brief posted to #exec-loss-ratio
+  C->>S: "@Genie is the hail inside our cat XL retention?"
+  S-->>C: Answer with the number, the source and the follow-up
+  S->>T: Teams pick up P1 actions (24-48h)

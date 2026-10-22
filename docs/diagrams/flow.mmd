@@ -1,0 +1,39 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Helvetica","fontSize":"15px","clusterBkg":"#ffffff","clusterBorder":"#dde3e6","lineColor":"#5b6b73"}}}%%
+flowchart LR
+  subgraph S["1 · Data (daily)"]
+    A1[Claims system<br/>loss run]:::src --> B1
+    A2[Policy admin<br/>earned premium]:::src --> B1
+    B1[(Unity Catalog<br/>gold_daily_loss_run)]:::uc
+  end
+  subgraph C["2 · Shared business context"]
+    B1 --> M1[Metric views<br/>mv_loss_ratio · mv_loss_run<br/>one loss-ratio definition]:::uc
+    M1 --> O1[Genie Ontology<br/>synonyms · comments · tags<br/>targets · benchmarks]:::ont
+  end
+  subgraph G["3 · AI coworkers"]
+    O1 --> GA[Genie Agent<br/>Loss Ratio Coworker]:::genie
+    O1 --> DB[AI/BI dashboard<br/>Daily Loss Ratio Watch]:::genie
+    GA --> G1["Genie One<br/>skill: loss-ratio-daily-brief<br/>scheduled 07:30 · Slack + Gmail connectors"]:::one
+  end
+  subgraph N["4 · Where people work"]
+    G1 --> SL["Slack<br/>brief posted to #exec-loss-ratio"]:::chan
+    G1 --> GM["Gmail<br/>one draft per team, ready to send"]:::chan
+    G1 --> TM["Microsoft Teams<br/>mention Databricks Genie"]:::chan
+    JOB[Daily watch job<br/>detect → explain → recommend]:::job --> SL
+    JOB --> TM
+    M1 --> JOB
+    GA -. explains why .-> JOB
+  end
+  subgraph D["5 · Downstream action"]
+    GM --> T1
+    SL --> T1[Claims · Underwriting · Pricing<br/>Reinsurance · Reserving · Finance]:::team
+    TM --> T1
+    JOB --> AR[(lr_action_recommendations<br/>audit trail)]:::uc
+  end
+  classDef src fill:#f6f8f9,stroke:#5b6b73,color:#1f2a30
+  classDef uc fill:#e9f8f2,stroke:#00A972,color:#1B3139
+  classDef ont fill:#eef5fb,stroke:#2272B4,color:#1B3139
+  classDef genie fill:#fff1ee,stroke:#FF3621,color:#1B3139
+  classDef one fill:#FF3621,stroke:#b3260f,color:#ffffff
+  classDef chan fill:#1B3139,stroke:#1B3139,color:#ffffff
+  classDef job fill:#fff7e3,stroke:#F2A900,color:#1B3139
+  classDef team fill:#ffffff,stroke:#1B3139,color:#1B3139

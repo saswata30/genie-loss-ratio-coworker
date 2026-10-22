@@ -1,0 +1,63 @@
+bundle:
+  name: genie-loss-ratio-coworker
+
+variables:
+  catalog:
+    description: Unity Catalog catalog to install into
+  schema:
+    default: loss_ratio_coworker
+  warehouse_id:
+    description: Serverless SQL warehouse for the Genie Agent, dashboard and app
+  genie_space_id:
+    description: Space id printed by deploy/genie_agent.py
+    default: ""
+  secret_scope:
+    default: loss_ratio_coworker
+
+resources:
+  jobs:
+    lrc_setup:
+      name: "[LRC] 1 · Setup: synthetic loss run + semantic layer"
+      tasks:
+        - task_key: generate_loss_run
+          notebook_task:
+            notebook_path: ./src/setup/01_generate_loss_run.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+        - task_key: semantic_layer
+          depends_on: [{task_key: generate_loss_run}]
+          notebook_task:
+            notebook_path: ./src/setup/02_semantic_layer.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+
+    lrc_daily_watch:
+      name: "[LRC] 2 · Daily loss-ratio watch → Slack & Teams"
+      schedule:
+        quartz_cron_expression: "0 0 7 ? * MON-FRI"
+        timezone_id: Europe/London
+        pause_status: PAUSED
+      tasks:
+        - task_key: refresh_loss_run
+          notebook_task:
+            notebook_path: ./src/setup/01_generate_loss_run.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+        - task_key: refresh_semantic_layer
+          depends_on: [{task_key: refresh_loss_run}]
+          notebook_task:
+            notebook_path: ./src/setup/02_semantic_layer.py
+            base_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+        - task_key: watch_and_notify
+          depends_on: [{task_key: refresh_semantic_layer}]
+          notebook_task:
+            notebook_path: ./src/jobs/daily_loss_ratio_watch.py
+            base_parameters:
+              catalog: "${var.catalog}"
+              schema: "${var.schema}"
+              genie_space_id: "${var.genie_space_id}"
+              secret_scope: "${var.secret_scope}"
+              dry_run: "true"
+
+
+targets:
+  dev:
+    mode: development
+    default: true

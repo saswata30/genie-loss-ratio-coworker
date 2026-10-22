@@ -1,0 +1,797 @@
+{
+  "datasets": [
+    {
+      "name": "kpi",
+      "displayName": "Kpi",
+      "queryLines": [
+        "SELECT MEASURE(loss_ratio) AS ytd_loss_ratio, MEASURE(target_loss_ratio) AS ytd_target, MEASURE(combined_ratio) AS ytd_combined_ratio, MEASURE(loss_ratio_vs_target_pts) AS ytd_gap_pts, (SELECT COUNT(*) FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.v_loss_ratio_watchlist WHERE status = 'RED') AS red_segments, (SELECT COUNT(*) FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.v_loss_ratio_watchlist WHERE status = 'AMBER') AS amber_segments FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.mv_loss_ratio WHERE YEAR(as_of_date) = YEAR((SELECT MAX(as_of_date) FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.gold_daily_loss_run)) "
+      ]
+    },
+    {
+      "name": "trend",
+      "displayName": "Trend",
+      "queryLines": [
+        "WITH d AS (SELECT as_of_date, line_of_business, SUM(incurred_loss) inc, SUM(earned_premium) ep FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.gold_daily_loss_run GROUP BY ALL) SELECT as_of_date, line_of_business, SUM(inc) OVER w / SUM(ep) OVER w AS rolling_7d_loss_ratio FROM d WHERE as_of_date >= (SELECT MAX(as_of_date) FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.gold_daily_loss_run) - INTERVAL 120 DAYS WINDOW w AS (PARTITION BY line_of_business ORDER BY as_of_date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) "
+      ]
+    },
+    {
+      "name": "lob_vs_target",
+      "displayName": "Lob Vs Target",
+      "queryLines": [
+        "SELECT line_of_business, 'Actual (30 days)' AS measure, MEASURE(loss_ratio) AS value FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.mv_loss_ratio WHERE as_of_date > (SELECT MAX(as_of_date) FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.gold_daily_loss_run) - INTERVAL 30 DAYS GROUP BY line_of_business UNION ALL SELECT line_of_business, 'Target', MEASURE(target_loss_ratio) FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.mv_loss_ratio WHERE as_of_date > (SELECT MAX(as_of_date) FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.gold_daily_loss_run) - INTERVAL 30 DAYS GROUP BY line_of_business "
+      ]
+    },
+    {
+      "name": "watchlist",
+      "displayName": "Watchlist",
+      "queryLines": [
+        "SELECT status, line_of_business, region, primary_driver, ROUND(lr_7d * 100, 1) AS lr_7d_pct, ROUND(lr_30d * 100, 1) AS lr_30d_pct, ROUND(target_loss_ratio * 100, 1) AS target_pct, gap_7d_pts, ROUND(freq_change * 100, 0) AS freq_change_pct, ROUND(sev_change * 100, 0) AS sev_change_pct, large_losses_7d, owner_team FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.v_loss_ratio_watchlist ORDER BY CASE status WHEN 'RED' THEN 0 WHEN 'AMBER' THEN 1 ELSE 2 END, gap_7d_pts DESC "
+      ]
+    },
+    {
+      "name": "actions",
+      "displayName": "Actions",
+      "queryLines": [
+        "SELECT a.priority, a.team, al.line_of_business, al.region, al.primary_driver, a.action, a.due_within, a.state FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.lr_action_recommendations a JOIN serverless_stable_xhky6g_catalog.loss_ratio_coworker.lr_alerts al USING (alert_id) WHERE al.as_of_date = (SELECT MAX(as_of_date) FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.lr_alerts) QUALIFY ROW_NUMBER() OVER (PARTITION BY a.alert_id, a.team ORDER BY a.created_at DESC) = 1 ORDER BY a.priority, a.team "
+      ]
+    },
+    {
+      "name": "benchmarks",
+      "displayName": "Benchmarks",
+      "queryLines": [
+        "SELECT 'Our book (YTD, synthetic)' AS benchmark, MEASURE(combined_ratio) AS combined_ratio FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.mv_loss_ratio WHERE YEAR(as_of_date) = YEAR((SELECT MAX(as_of_date) FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.gold_daily_loss_run)) UNION ALL SELECT CONCAT(benchmark, ' ', period, IF(basis LIKE '%undiscounted%', ' (undiscounted)', '')), value FROM serverless_stable_xhky6g_catalog.loss_ratio_coworker.industry_benchmarks "
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "watch",
+      "displayName": "Daily watch",
+      "layout": [
+        {
+          "widget": {
+            "name": "9f4deec06d",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Daily Loss Ratio Watch\n",
+                "Synthetic European commercial P&C book \u00b7 loss ratio = incurred / earned (governed metric view `mv_loss_ratio`) \u00b7 refreshed every morning \u00b7 alerts and recommended actions go to Slack and Teams\n"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "0b6431c38e",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpi",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "ytd_loss_ratio",
+                      "expression": "`ytd_loss_ratio`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "ytd_loss_ratio",
+                  "displayName": "YTD loss ratio",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "YTD loss ratio"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "01e7cb2ebf",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpi",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "ytd_target",
+                      "expression": "`ytd_target`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "ytd_target",
+                  "displayName": "YTD target",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "YTD target"
+              }
+            }
+          },
+          "position": {
+            "x": 1,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "59591a1233",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpi",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "ytd_combined_ratio",
+                      "expression": "`ytd_combined_ratio`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "ytd_combined_ratio",
+                  "displayName": "YTD combined ratio",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "YTD combined ratio"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "2cac6b192e",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpi",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "ytd_gap_pts",
+                      "expression": "`ytd_gap_pts`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "ytd_gap_pts",
+                  "displayName": "Gap to target (pts)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Gap to target (pts)"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "c68894564d",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpi",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "red_segments",
+                      "expression": "`red_segments`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "red_segments",
+                  "displayName": "RED segments today"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "RED segments today"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "81eae2a90a",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpi",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "amber_segments",
+                      "expression": "`amber_segments`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "amber_segments",
+                  "displayName": "AMBER segments today"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "AMBER segments today"
+              }
+            }
+          },
+          "position": {
+            "x": 5,
+            "y": 2,
+            "width": 1,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "cf1120a5c1",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "trend",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "as_of_date",
+                      "expression": "`as_of_date`"
+                    },
+                    {
+                      "name": "rolling_7d_loss_ratio",
+                      "expression": "SUM(`rolling_7d_loss_ratio`)"
+                    },
+                    {
+                      "name": "line_of_business",
+                      "expression": "`line_of_business`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "as_of_date",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "as of date"
+                },
+                "y": {
+                  "fieldName": "rolling_7d_loss_ratio",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "rolling 7d loss ratio",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "line_of_business",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "line of business"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Rolling 7-day loss ratio by line of business (last 120 days)"
+              },
+              "mark": {
+                "colors": [
+                  "#1B3139",
+                  "#FF3621",
+                  "#00A972",
+                  "#F2A900",
+                  "#2272B4",
+                  "#8BCAE7"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "bafe8f21eb",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "benchmarks",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "benchmark",
+                      "expression": "`benchmark`"
+                    },
+                    {
+                      "name": "combined_ratio",
+                      "expression": "SUM(`combined_ratio`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "y": {
+                  "fieldName": "benchmark",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  },
+                  "displayName": " "
+                },
+                "x": {
+                  "fieldName": "combined_ratio",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "combined ratio",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Combined ratio vs public benchmarks (AM Best, AXA FY2025)"
+              },
+              "mark": {
+                "colors": [
+                  "#1B3139"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 5,
+            "width": 2,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "28621254e3",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "lob_vs_target",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "line_of_business",
+                      "expression": "`line_of_business`"
+                    },
+                    {
+                      "name": "value",
+                      "expression": "SUM(`value`)"
+                    },
+                    {
+                      "name": "measure",
+                      "expression": "`measure`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "line_of_business",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "line of business"
+                },
+                "y": {
+                  "fieldName": "value",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "value",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "measure",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "measure"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "30-day loss ratio vs target"
+              },
+              "mark": {
+                "colors": [
+                  "#1B3139",
+                  "#FF3621",
+                  "#00A972",
+                  "#F2A900",
+                  "#2272B4",
+                  "#8BCAE7"
+                ],
+                "layout": "group"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 2,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "437eabf687",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "watchlist",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    },
+                    {
+                      "name": "line_of_business",
+                      "expression": "`line_of_business`"
+                    },
+                    {
+                      "name": "region",
+                      "expression": "`region`"
+                    },
+                    {
+                      "name": "primary_driver",
+                      "expression": "`primary_driver`"
+                    },
+                    {
+                      "name": "lr_7d_pct",
+                      "expression": "`lr_7d_pct`"
+                    },
+                    {
+                      "name": "lr_30d_pct",
+                      "expression": "`lr_30d_pct`"
+                    },
+                    {
+                      "name": "target_pct",
+                      "expression": "`target_pct`"
+                    },
+                    {
+                      "name": "gap_7d_pts",
+                      "expression": "`gap_7d_pts`"
+                    },
+                    {
+                      "name": "freq_change_pct",
+                      "expression": "`freq_change_pct`"
+                    },
+                    {
+                      "name": "sev_change_pct",
+                      "expression": "`sev_change_pct`"
+                    },
+                    {
+                      "name": "large_losses_7d",
+                      "expression": "`large_losses_7d`"
+                    },
+                    {
+                      "name": "owner_team",
+                      "expression": "`owner_team`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "status",
+                    "displayName": "status"
+                  },
+                  {
+                    "fieldName": "line_of_business",
+                    "displayName": "line of business"
+                  },
+                  {
+                    "fieldName": "region",
+                    "displayName": "region"
+                  },
+                  {
+                    "fieldName": "primary_driver",
+                    "displayName": "primary driver"
+                  },
+                  {
+                    "fieldName": "lr_7d_pct",
+                    "displayName": "lr 7d pct"
+                  },
+                  {
+                    "fieldName": "lr_30d_pct",
+                    "displayName": "lr 30d pct"
+                  },
+                  {
+                    "fieldName": "target_pct",
+                    "displayName": "target pct"
+                  },
+                  {
+                    "fieldName": "gap_7d_pts",
+                    "displayName": "gap 7d pts"
+                  },
+                  {
+                    "fieldName": "freq_change_pct",
+                    "displayName": "freq change pct"
+                  },
+                  {
+                    "fieldName": "sev_change_pct",
+                    "displayName": "sev change pct"
+                  },
+                  {
+                    "fieldName": "large_losses_7d",
+                    "displayName": "large losses 7d"
+                  },
+                  {
+                    "fieldName": "owner_team",
+                    "displayName": "owner team"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Today's watchlist (RED / AMBER / GREEN)"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 11,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "99c5927444",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "actions",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "priority",
+                      "expression": "`priority`"
+                    },
+                    {
+                      "name": "team",
+                      "expression": "`team`"
+                    },
+                    {
+                      "name": "line_of_business",
+                      "expression": "`line_of_business`"
+                    },
+                    {
+                      "name": "region",
+                      "expression": "`region`"
+                    },
+                    {
+                      "name": "primary_driver",
+                      "expression": "`primary_driver`"
+                    },
+                    {
+                      "name": "action",
+                      "expression": "`action`"
+                    },
+                    {
+                      "name": "due_within",
+                      "expression": "`due_within`"
+                    },
+                    {
+                      "name": "state",
+                      "expression": "`state`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "priority",
+                    "displayName": "priority"
+                  },
+                  {
+                    "fieldName": "team",
+                    "displayName": "team"
+                  },
+                  {
+                    "fieldName": "line_of_business",
+                    "displayName": "line of business"
+                  },
+                  {
+                    "fieldName": "region",
+                    "displayName": "region"
+                  },
+                  {
+                    "fieldName": "primary_driver",
+                    "displayName": "primary driver"
+                  },
+                  {
+                    "fieldName": "action",
+                    "displayName": "action"
+                  },
+                  {
+                    "fieldName": "due_within",
+                    "displayName": "due within"
+                  },
+                  {
+                    "fieldName": "state",
+                    "displayName": "state"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Recommended actions for downstream teams (latest run)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 17,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ]
+    }
+  ]
+}
